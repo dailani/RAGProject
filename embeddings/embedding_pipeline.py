@@ -1,6 +1,5 @@
 import os
-
-from langchain_core.vectorstores import InMemoryVectorStore
+import getpass
 from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings
 from embeddings.parse_pdf import parse_pdf
@@ -11,6 +10,9 @@ from langchain_pinecone import PineconeVectorStore
 from utils.pdf_path import get_all_pdfs_path
 
 load_dotenv()
+
+if not os.getenv("PINECONE_API_KEY"):
+    os.environ["PINECONE_API_KEY"] = getpass.getpass("Enter your Pinecone API key: ")
 
 pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY_API_KEY"))
 
