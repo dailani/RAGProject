@@ -25,13 +25,13 @@ pc = Pinecone(api_key=pinecone_api_key)
 
 def chat():
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-    index_name = "electric-products-index"
+    index_name = "electric-products-sections"
 
     index = pc.Index(index_name)
 
     vector_store = PineconeVectorStore(index=index, embedding=embeddings)
 
-    retriever = vector_store.as_retriever(search_kwargs={"k": 5})
+    retriever = vector_store.as_retriever(search_kwargs={"k": 20})
 
     retrieval_qa_chat_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
 
@@ -52,7 +52,7 @@ def chat():
         combine_docs_chain=combine_docs_chain
     )
 
-    response = retrieval_chain.invoke({"input": "What is the color temperature of SIRIUS HRI 330W?"})
+    response = retrieval_chain.invoke({"input": "What is the color temperature of SIRIUS HRI 330W 2/CS 1/SKU"})
     print(response["answer"])
 
 if __name__ == "__main__":

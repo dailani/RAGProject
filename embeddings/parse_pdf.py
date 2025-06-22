@@ -1,52 +1,80 @@
 import pdfplumber
 import os
+import re
 
-def parse_pdf(pdf_path):
+def extract_product_id(text):
+    lines = text.split('\n')
+    for idx, line in enumerate(lines):
+        if "Product datasheet" in line:
+            for next_line in lines[idx+1:]:
+                next_line = next_line.strip()
+                if next_line:
+                    return next_line
+    return None
+
+def extract_technical_sections(text, section_headers=None):
+    if section_headers is None:
+        section_headers = [
+            "Areas of application",
+            "Product features and benefits",
+            "Technical Data",
+            "Photometric Data",
+            "Electrical Data",
+            "Physical Attributes",
+            "Operating Conditions",
+            "Lifetime Data",
+            "Environmental & Regulatory Information",
+            "Safety advice",
+            "Logistical Data"
+        ]
+    pattern = r"(" + "|".join([re.escape(h) for h in section_headers]) + r")"
+    results = []
+    lines = text.split('\n')
+    chunk = []
+    current_header = None
+    for line in lines:
+        line_stripped = line.strip()
+        header_match = re.match(pattern, line_stripped, re.IGNORECASE)
+        if header_match:
+            if current_header and chunk:
+                results.append({
+                    "header": current_header,
+                    "content": "\n".join(chunk).strip()
+                })
+            current_header = header_match.group(1)
+            chunk = [line_stripped]
+        elif current_header:
+            chunk.append(line_stripped)
+    if current_header and chunk:
+        results.append({
+            "header": current_header,
+            "content": "\n".join(chunk).strip()
+        })
+    return results
+
+def parse_pdf_for_tech_sections(pdf_path):
     source = os.path.basename(pdf_path)
-    all_rows = []
-    all_texts = []
+    all_sections = []
     with pdfplumber.open(pdf_path) as pdf:
+        first_page_text = pdf.pages[0].extract_text()
+        product_id = extract_product_id(first_page_text) if first_page_text else None
+
         for page_num, page in enumerate(pdf.pages, start=1):
-            print(f"\n=== Processing Page {page_num} ===")
-
-            # FIRST PAGE: always extract text
-            if page_num == 1:
-                text = page.extract_text()
-                if text:
-                    print(f"\n--- Main Text on Page {page_num} ---\n{text.strip()}")
-                    all_texts.append({
+            text = page.extract_text()
+            if text:
+                sections = extract_technical_sections(text)
+                for sec in sections:
+                    chunk = {
+                        "header": sec['header'],
+                        "content": sec['content'],
                         "page": page_num,
-                        "text": text.strip(),
-                        "source": source
-                    })
+                        "product_id": product_id,
+                        "source": source,
+                    }
+                    all_sections.append(chunk)
+    return all_sections
 
-            else:
-                text = page.extract_text() or ""
-                # Check if 'safety advice' is in the page text
-                if "safety advice" in text.lower():
-                    print(f"\n--- Safety Advice Text on Page {page_num} ---\n{text.strip()}")
-                    all_texts.append({
-                        "page": page_num,
-                        "text": text.strip(),
-                        "source": source
-                    })
-                else:
-                    # Only extract tables
-                    tables = page.extract_tables()
-                    if tables:
-                        for table_idx, table in enumerate(tables, start=1):
-                            print(f"\n--- Table {table_idx} on Page {page_num} ---")
-                            for row in table:
-                                print(row)
-                            if table and len(table) > 1:
-                                headers = table[0]
-                                for row in table[1:]:
-                                    row_dict = dict(zip(headers, row))
-                                    row_dict["page"] = page_num
-                                    row_dict["source"] = source
-                                    all_rows.append(row_dict)
-    return all_rows, all_texts
-
-
-
-
+if __name__ == "__main__":
+    all_sections = parse_pdf_for_tech_sections('../pdfs/dataset_1/ZMP_1004795.pdf')
+    for section in all_sections:
+        print(section)
