@@ -11,7 +11,7 @@ import json
 from langchain.retrievers.contextual_compression import ContextualCompressionRetriever
 from langchain_community.document_compressors.rankllm_rerank import RankLLMRerank
 from prompts.rephraser import MULTI_HEADER_PROMPT, VECTOR_REPHRASER_QUERY_PROMPT
-
+import re
 load_dotenv()
 
 if not os.environ.get("OPENAI_API_KEY"):
@@ -23,14 +23,47 @@ if not os.getenv("PINECONE_API_KEY"):
 pinecone_api_key = os.environ.get("PINECONE_API_KEY")
 pc = Pinecone(api_key=pinecone_api_key)
 
+def extract_product_code_from_query(query):
+    match = re.search(r'\b(\d{13})\b', query)
+    if match:
+        return match.group(1)
+    return None
 
-def retreive(user_input: str):
+
+def build_retriever_query(headers_array, user_query):
+    product_code = extract_product_code_from_query(user_query)
+    print("Extracted Product Code:", product_code)
+
+    if len(headers_array) == 1:
+        header_filter = headers_array[0]
+        print("Header filter (single):", header_filter)
+    else:
+        header_filter = {"$or": headers_array}
+        print("Header filter (OR):", header_filter)
+
+    # Decides if filter by product_code or  by header
+    if product_code:
+        filter_kwargs = {"product_code": {"$in": [product_code]}}
+        print("Final filter (only product_code):", filter_kwargs)
+    else:
+        filter_kwargs = header_filter
+        print("Final filter (only header):", filter_kwargs)
+
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-    index_name = "electric-products-sections-productid"
-
+    index_name = "electric-products-sections-productcode"
     index = pc.Index(index_name)
 
     vector_store = PineconeVectorStore(index=index, embedding=embeddings)
+
+    retriever = vector_store.as_retriever(
+        search_kwargs={
+            "k": 50,
+            "filter": filter_kwargs
+        }
+    )
+    return retriever
+
+def retreive(user_input: str):
 
     retrieval_qa_chat_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
     llm = ChatOpenAI(
@@ -43,24 +76,12 @@ def retreive(user_input: str):
     llm_runnable_header = MULTI_HEADER_PROMPT | llm
 
     headers_output = llm_runnable_header.invoke({"input": user_input})
-    print("Headers output:", headers_output)
     # Clean JSON
     headers_content = headers_output.content
     headers_array = json.loads(headers_content)
 
-    print(headers_array)
-
-    if len(headers_array) == 1:
-        filter_kwargs = headers_array[0]
-    else:
-        filter_kwargs = {"$or": headers_array}
-
-    retriever = vector_store.as_retriever(
-        search_kwargs={
-            "k": 50,
-            "filter": filter_kwargs if filter_kwargs else None
-        }
-    )
+    # Deliver retriver we built previosly
+    retriever = build_retriever_query(headers_array, user_input)
 
     llm_runnable_rephraser = VECTOR_REPHRASER_QUERY_PROMPT | llm
     rephraser_output = llm_runnable_rephraser.invoke({"input": user_input})
