@@ -64,9 +64,11 @@ def parse_pdf_for_tech_sections(pdf_path):
             if text:
                 sections = extract_technical_sections(text)
                 for sec in sections:
+                    # Add Product ID on each section
+                    section_content = f"Product_ID: {product_id}\n{sec['content']}"
                     chunk = {
                         "header": sec['header'],
-                        "content": sec['content'],
+                        "content": section_content,
                         "page": page_num,
                         "product_id": product_id,
                         "source": source,

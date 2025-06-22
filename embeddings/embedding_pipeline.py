@@ -35,7 +35,7 @@ def flatten_sections_to_documents(section_chunks_param):
 
 
 def embbeding_pipeline():
-  index_name = "electric-products-sections"
+  index_name = "electric-products-sections-productid"
 
   if not pc.has_index(index_name):
     pc.create_index(
