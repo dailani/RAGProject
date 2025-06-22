@@ -12,7 +12,7 @@ def get_llm_translator():
 
 
 prompt_template = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant that translates German to English only if the language is german. Else return the original text."),
+    ("system", "You are a helpful assistant that translates German to English only if the language is German. Else return the original text."),
     ("user", "{text}")
 ])
 
@@ -22,6 +22,7 @@ def translate_text(text: str) -> str:
         llm_translator = get_llm_translator()
         prompt = prompt_template.invoke({"text": text})
         response = llm_translator.invoke(prompt)
+        print("INFO:: Translation response:", response.content)
         return response.content
     except Exception as e:
         print("Exception in translate_text:", e)

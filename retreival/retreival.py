@@ -8,10 +8,9 @@ from pinecone import Pinecone
 from langchain import hub
 from langchain.chains.combine_documents import create_stuff_documents_chain
 import json
-import re
 from langchain.retrievers.contextual_compression import ContextualCompressionRetriever
 from langchain_community.document_compressors.rankllm_rerank import RankLLMRerank
-from prompts.rephraser import REPHRASE_QUERY_PROMPT
+from prompts.rephraser import MULTI_HEADER_PROMPT, VECTOR_REPHRASER_QUERY_PROMPT
 
 load_dotenv()
 
@@ -34,7 +33,6 @@ def retreive(user_input: str):
     vector_store = PineconeVectorStore(index=index, embedding=embeddings)
 
     retrieval_qa_chat_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
-
     llm = ChatOpenAI(
         model_name="gpt-4.1-mini",
         temperature=0,
@@ -42,39 +40,33 @@ def retreive(user_input: str):
 
     )
 
-    llm_runnable = REPHRASE_QUERY_PROMPT | llm
+    llm_runnable_header = MULTI_HEADER_PROMPT | llm
 
-    structured_out = llm_runnable.invoke({"input": user_input})
-
+    headers_output = llm_runnable_header.invoke({"input": user_input})
+    print("Headers output:", headers_output)
     # Clean JSON
-    content = structured_out.content
-    clean_content = re.sub(r"^```json|^```|```$", "", content, flags=re.MULTILINE).strip()
+    headers_content = headers_output.content
+    headers_array = json.loads(headers_content)
 
-    print("INFO:: Structured Output:", structured_out)
-    result = json.loads(clean_content)
-    rephrased_query = result["rephrased_query"]
-    product_id = result["product_id"]
-    header = result["header"]
+    print(headers_array)
 
-    print("INFO:: Rephrased:", rephrased_query)
-    print("INFO:: Product ID:", product_id)
-    print("INFO:: Header:", header)
-
-    # Dynamic FIltering
-    filter_kwargs = {}
-    #if product_id:
-    #  filter_kwargs["product_id"] = product_id
-    if header:
-        filter_kwargs["header"] = header
+    if len(headers_array) == 1:
+        filter_kwargs = headers_array[0]
+    else:
+        filter_kwargs = {"$or": headers_array}
 
     retriever = vector_store.as_retriever(
         search_kwargs={
-            "k": 20,
+            "k": 50,
             "filter": filter_kwargs if filter_kwargs else None
         }
     )
 
-    compressor = RankLLMRerank(top_n=5, model="gpt", gpt_model="gpt-4.1-mini")
+    llm_runnable_rephraser = VECTOR_REPHRASER_QUERY_PROMPT | llm
+    rephraser_output = llm_runnable_rephraser.invoke({"input": user_input})
+    print("Rephraser output:", rephraser_output)
+
+    compressor = RankLLMRerank(top_n=20, model="gpt", gpt_model="gpt-4.1-mini")
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=retriever
     )
@@ -89,9 +81,10 @@ def retreive(user_input: str):
         combine_docs_chain=combine_docs_chain
     )
 
-    response = retrieval_chain.invoke({"input": rephrased_query})
+    response = retrieval_chain.invoke({"input": rephraser_output.content})
+    print("Final response:", response)
     return response
 
 
 if __name__ == "__main__":
-    retreive("What is the color Temperature of SIRIUS HRI 330W 2/CS 1/SKU?")
+    retreive("Gebe mir alle Leuchtmittel mit mindestens 1000 Watt und Lebensdauer von mehr als 400 Stunden")
