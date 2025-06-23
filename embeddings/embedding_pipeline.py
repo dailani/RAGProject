@@ -16,6 +16,7 @@ if not os.getenv("PINECONE_API_KEY"):
 
 pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
 
+
 def flatten_sections_to_documents(section_chunks_param):
     flatten_docs = []
     for section in section_chunks_param:
@@ -27,7 +28,8 @@ def flatten_sections_to_documents(section_chunks_param):
                     "page": section.get("page"),
                     "product_id": section.get("product_id"),
                     "header": section.get("header"),
-                    "source": section.get("source")
+                    "source": section.get("source"),
+                    "product_code": section.get("product_code"),
                 }
             )
         )
@@ -35,33 +37,33 @@ def flatten_sections_to_documents(section_chunks_param):
 
 
 def embbeding_pipeline():
-  index_name = "electric-products-sections"
+    index_name = "electric-products-sections-productcode"
 
-  if not pc.has_index(index_name):
-    pc.create_index(
-      index_name,
-      metric="cosine",
-      spec=ServerlessSpec(cloud="aws", region="us-east-1"),
-      dimension=3072
-    )
+    if not pc.has_index(index_name):
+        pc.create_index(
+            index_name,
+            metric="cosine",
+            spec=ServerlessSpec(cloud="aws", region="us-east-1"),
+            dimension=3072
+        )
 
-  docs = []
-  all_pdf_paths = get_all_pdfs_path()
-  for pdf_path in all_pdf_paths:
-    section_chunks = parse_pdf_for_tech_sections(pdf_path)
-    docs.extend(flatten_sections_to_documents(section_chunks))
+    docs = []
+    all_pdf_paths = get_all_pdfs_path()
+    for pdf_path in all_pdf_paths:
+        section_chunks = parse_pdf_for_tech_sections(pdf_path)
+        docs.extend(flatten_sections_to_documents(section_chunks))
 
-  embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-  batch_size = 100
-  for i in range(0, len(docs), batch_size):
-    batch = docs[i:i + batch_size]
-    PineconeVectorStore.from_documents(
-      batch,
-      embeddings,
-      index_name=index_name,
-    )
-  print(f"Uploaded {len(docs)} documents in batches of {batch_size} to index '{index_name}'.")
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+    batch_size = 100
+    for i in range(0, len(docs), batch_size):
+        batch = docs[i:i + batch_size]
+        PineconeVectorStore.from_documents(
+            batch,
+            embeddings,
+            index_name=index_name,
+        )
+    print(f"Uploaded {len(docs)} documents in batches of {batch_size} to index '{index_name}'.")
 
 
 if __name__ == "__main__":
-  embbeding_pipeline()
+    embbeding_pipeline()

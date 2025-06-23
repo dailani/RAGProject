@@ -12,7 +12,10 @@ def extract_product_id(text):
                     return next_line
     return None
 
-def extract_technical_sections(text, section_headers=None):
+def extract_all_product_codes(text):
+    return list(set(re.findall(r'\b\d{13}\b', text)))
+
+def extract_technical_sections(text, section_headers=None, product_ids=None,):
     if section_headers is None:
         section_headers = [
             "Areas of application",
@@ -39,7 +42,8 @@ def extract_technical_sections(text, section_headers=None):
             if current_header and chunk:
                 results.append({
                     "header": current_header,
-                    "content": "\n".join(chunk).strip()
+                    "content": "\n".join(chunk).strip(),
+                    "product_code": product_ids if product_ids else [],
                 })
             current_header = header_match.group(1)
             chunk = [line_stripped]
@@ -48,7 +52,8 @@ def extract_technical_sections(text, section_headers=None):
     if current_header and chunk:
         results.append({
             "header": current_header,
-            "content": "\n".join(chunk).strip()
+            "product_code": product_ids if product_ids else [],
+            "content": "\n".join(chunk).strip(),
         })
     return results
 
@@ -56,19 +61,30 @@ def parse_pdf_for_tech_sections(pdf_path):
     source = os.path.basename(pdf_path)
     all_sections = []
     with pdfplumber.open(pdf_path) as pdf:
+
+        # Get all Text so i can extract product codes
+        all_text = ""
+        for page in pdf.pages:
+            txt = page.extract_text()
+            if txt:
+                all_text += txt + "\n"
+        product_codes = extract_all_product_codes(all_text)
+
+
         first_page_text = pdf.pages[0].extract_text()
         product_id = extract_product_id(first_page_text) if first_page_text else None
-
         for page_num, page in enumerate(pdf.pages, start=1):
             text = page.extract_text()
             if text:
                 sections = extract_technical_sections(text)
                 for sec in sections:
+                    section_content = f"Product_ID: {product_id}\n{sec['content']}"
                     chunk = {
                         "header": sec['header'],
-                        "content": sec['content'],
+                        "content": section_content,
                         "page": page_num,
                         "product_id": product_id,
+                        "product_code": product_codes,
                         "source": source,
                     }
                     all_sections.append(chunk)
